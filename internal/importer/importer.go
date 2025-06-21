@@ -45,14 +45,49 @@ func (i *Importer) Run() error {
 			Queue:       map[string]string{"key": i.cfg.Queue},
 		}
 
-		// TODO: Реализовать поиск/создание эпика и добавление его в Parent
+		if record.Epic != "" {
+			epicID, ok := i.epicCache[record.Epic]
+			if !ok {
+				// Эпик не в кэше, ищем или создаем
+				foundEpicID, err := i.tracker.FindEpic(record.Epic, i.cfg.Queue)
+				if err != nil {
+					fmt.Printf("Ошибка поиска эпика '%s': %v\n", record.Epic, err)
+					continue
+				}
+
+				if foundEpicID != "" {
+					epicID = foundEpicID
+				} else {
+					// Создаем эпик
+					fmt.Printf("Эпик '%s' не найден, создаем новый...\n", record.Epic)
+					epicReq := tracker.CreateIssueRequest{
+						Summary: record.Epic,
+						Queue:   map[string]string{"key": i.cfg.Queue},
+						Type:    "epic",
+					}
+					resp, err := i.tracker.CreateIssue(epicReq)
+					if err != nil {
+						fmt.Printf("Ошибка создания эпика '%s': %v\n", record.Epic, err)
+						continue
+					}
+					epicID = resp.ID
+					fmt.Printf("Успешно создан эпик: %s\n", resp.Key)
+				}
+				i.epicCache[record.Epic] = epicID
+			}
+			createReq.Parent = map[string]string{"id": epicID}
+		}
 
 		resp, err := i.tracker.CreateIssue(createReq)
 		if err != nil {
 			fmt.Printf("Ошибка создания задачи '%s': %v\n", record.Summary, err)
 			continue
 		}
-		fmt.Printf("Успешно создана задача: %s (%s)\n", resp.Key, record.Summary)
+		if record.Epic != "" {
+			fmt.Printf("Успешно создана задача: %s (%s) в эпике '%s'\n", resp.Key, record.Summary, record.Epic)
+		} else {
+			fmt.Printf("Успешно создана задача: %s (%s)\n", resp.Key, record.Summary)
+		}
 	}
 
 	return nil

@@ -33,9 +33,6 @@ func NewClient(token, orgID string) (*Client, error) {
 // FindEpic ищет эпик по имени в указанной очереди.
 // Возвращает ID эпика или пустую строку, если не найден.
 func (c *Client) FindEpic(name, queue string) (string, error) {
-	// Заглушка. Реализация будет в следующей фазе.
-	fmt.Printf("[DEBUG] Поиск эпика: Имя='%s', Очередь='%s'\n", name, queue)
-
 	searchReq := SearchRequest{
 		Filter: map[string]string{
 			"queue":   queue,
@@ -49,11 +46,46 @@ func (c *Client) FindEpic(name, queue string) (string, error) {
 		return "", fmt.Errorf("ошибка маршалинга запроса поиска эпика: %w", err)
 	}
 
-	// Логика выполнения HTTP запроса будет добавлена позже.
-	_ = body
+	url := fmt.Sprintf("%s/v3/issues/_search", BaseURL)
+	req, err := http.NewRequest(http.MethodPost, url, bytes.NewBuffer(body))
+	if err != nil {
+		return "", fmt.Errorf("ошибка создания HTTP-запроса для поиска эпика: %w", err)
+	}
 
-	// Пока возвращаем пустую строку для имитации.
-	return "", nil
+	req.Header.Set("Authorization", "Bearer "+c.token)
+	req.Header.Set("X-Cloud-Org-ID", c.orgID)
+	req.Header.Set("Content-Type", "application/json")
+
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return "", fmt.Errorf("ошибка выполнения HTTP-запроса для поиска эпика: %w", err)
+	}
+	defer resp.Body.Close()
+
+	respBody, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return "", fmt.Errorf("ошибка чтения тела ответа поиска эпика: %w", err)
+	}
+
+	if resp.StatusCode != http.StatusOK {
+		var apiErr APIError
+		if json.Unmarshal(respBody, &apiErr) == nil {
+			apiErr.StatusCode = resp.StatusCode
+			return "", &apiErr
+		}
+		return "", fmt.Errorf("ошибка API поиска эпика (статус %d): %s", resp.StatusCode, string(respBody))
+	}
+
+	var issues []IssueResponse
+	if err := json.Unmarshal(respBody, &issues); err != nil {
+		return "", fmt.Errorf("ошибка десериализации ответа поиска эпика: %w", err)
+	}
+
+	if len(issues) > 0 {
+		return issues[0].ID, nil
+	}
+
+	return "", nil // Не найдено
 }
 
 // CreateIssue создает задачу или эпик.
