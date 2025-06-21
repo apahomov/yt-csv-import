@@ -10,3 +10,4 @@
 
 # Output of the go coverage tool
 *.out 
+yt-csv-importer

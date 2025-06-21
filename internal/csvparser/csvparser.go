@@ -16,8 +16,8 @@ func Parse(filePath string) ([]Record, error) {
 	defer file.Close()
 
 	reader := csv.NewReader(file)
-	// CSV файл имеет 3 колонки: Эпик,Заголовок,Описание
-	reader.FieldsPerRecord = 3
+	// Разрешаем переменное количество полей (2-3 колонки)
+	reader.FieldsPerRecord = -1
 
 	rawRecords, err := reader.ReadAll()
 	if err != nil {
@@ -26,14 +26,24 @@ func Parse(filePath string) ([]Record, error) {
 
 	var records []Record
 	for i, row := range rawRecords {
+		if len(row) < 2 {
+			return nil, fmt.Errorf("недостаточно колонок в строке %d (минимум 2: Эпик, Заголовок)", i+1)
+		}
 		if row[1] == "" {
 			return nil, fmt.Errorf("заголовок задачи (вторая колонка) не может быть пустым в строке %d", i+1)
 		}
-		records = append(records, Record{
-			Epic:        row[0],
-			Summary:     row[1],
-			Description: row[2],
-		})
+
+		record := Record{
+			Epic:    row[0],
+			Summary: row[1],
+		}
+
+		// Описание опционально (третья колонка)
+		if len(row) > 2 {
+			record.Description = row[2]
+		}
+
+		records = append(records, record)
 	}
 
 	return records, nil
